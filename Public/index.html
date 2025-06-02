@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Freebet — User Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f4f4; }
+    header { background: #0f172a; color: white; padding: 20px; text-align: center; }
+    nav { display: flex; justify-content: space-between; background: #1e293b; padding: 10px; }
+    nav a, nav button { color: white; text-decoration: none; font-weight: bold; background: none; border: none; cursor: pointer; }
+    .container { padding: 20px; }
+    .wallet-info, .deposit-section, .bet-section, .withdraw-section, .history-section {
+      background: #e2e8f0; padding: 15px; border-radius: 10px; margin-bottom: 20px;
+    }
+    .section h3 { margin-top: 0; }
+    input, button { padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; width: 100%; }
+    button { background: #0ea5e9; color: white; border: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Freebet Dashboard</h1>
+    <p>Min Deposit: ₦5,100  |  Min Bet: ₦5,000  |  First Bet = 1000× Win</p>
+  </header>
+  <nav>
+    <a href="index.html">Home</a>
+    <button onclick="logout()">Logout</button>
+  </nav>
+
+  <div class="container">
+    <div class="wallet-info section">
+      <h3>Wallet Balance: ₦<span id="balance">0</span></h3>
+    </div>
+
+    <div class="deposit-section section">
+      <h3>Deposit Funds</h3>
+      <input type="number" id="depositAmount" placeholder="Enter amount (≥ 5100)" min="5100" />
+      <button onclick="deposit()">Deposit</button>
+    </div>
+
+    <div class="bet-section section">
+      <h3>Place a Bet (₦5,000 Minimum)</h3>
+      <input type="number" id="betAmount" placeholder="Bet Amount (≥ 5000)" min="5000" value="5000" />
+      <button onclick="placeBet()">Place Bet</button>
+    </div>
+
+    <div class="withdraw-section section">
+      <h3>Request Withdrawal</h3>
+      <input type="number" id="withdrawAmount" placeholder="Enter amount" />
+      <button onclick="requestWithdrawal()">Request Withdrawal</button>
+    </div>
+
+    <div class="history-section section">
+      <h3>Withdrawal History</h3>
+      <ul id="withdrawHistory"></ul>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    window.onload = () => {
+      fetchBalance();
+      fetchWithdrawHistory();
+    };
+
+    async function fetchBalance() {
+      try {
+        // Ideally a GET /api/auth/me route; omitted for brevity.
+      } catch {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+      }
+    }
+
+    async function deposit() {
+      const amount = parseInt(document.getElementById('depositAmount').value);
+      if (!amount || amount < 5100) {
+        alert('Minimum deposit is ₦5,100');
+        return;
+      }
+      try {
+        const res = await fetch('/api/game/deposit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ amount })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('balance').innerText = data.newBalance;
+          alert('Deposit successful');
+        } else {
+          alert(data.msg || 'Deposit failed');
+        }
+      } catch {
+        alert('Error. Try again.');
+      }
+    }
+
+    async function placeBet() {
+      const amount = parseInt(document.getElementById('betAmount').value);
+      if (!amount || amount < 5000) {
+        alert('Minimum bet is ₦5,000');
+        return;
+      }
+      try {
+        const res = await fetch('/api/game/play', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ amount })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('balance').innerText = data.newBalance;
+          if (data.winnings > 0) {
+            alert(`🎉 You won ₦${data.winnings}!`);
+          } else {
+            alert('Bet placed. No win this round.');
+          }
+        } else {
+          alert(data.msg || 'Bet failed');
+        }
+      } catch {
+        alert('Error. Please try again.');
+      }
+    }
+
+    async function requestWithdrawal() {
+      const amount = parseInt(document.getElementById('withdrawAmount').value);
+      if (!amount || amount <= 0) {
+        alert('Enter a valid amount');
+        return;
+      }
+      try {
+        const res = await fetch('/api/withdraw/request', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ amount })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.msg);
+          document.getElementById('balance').innerText =
+            parseInt(document.getElementById('balance').innerText) - amount;
+          fetchWithdrawHistory();
+        } else {
+          alert(data.msg || 'Withdrawal request failed');
+        }
+      } catch {
+        alert('Error. Please try again.');
+      }
+    }
+
+    async function fetchWithdrawHistory() {
+      try {
+        const res = await fetch('/api/withdraw/history', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const requests = await res.json();
+        const list = document.getElementById('withdrawHistory');
+        list.innerHTML = '';
+        requests.forEach(r => {
+          const li = document.createElement('li');
+          li.innerText = `₦${r.amount} — ${r.status.toUpperCase()} — ${new Date(r.createdAt).toLocaleString()}`;
+          list.appendChild(li);
+        });
+      } catch {
+        // ignore errors
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+  </html>
