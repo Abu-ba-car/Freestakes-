@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Freebet — Admin Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f4f4; }
+    header { background: #0f172a; color: white; padding: 20px; text-align: center; }
+    nav { display: flex; justify-content: flex-end; background: #1e293b; padding: 10px; }
+    nav button { color: white; background: none; border: none; font-weight: bold; cursor: pointer; }
+    .container { padding: 20px; }
+    h2 { margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+    th { background: #e2e8f0; }
+    button.block, button.unblock, button.approve, button.reject {
+      padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; margin: 2px;
+    }
+    button.block    { background: #ef4444; color: white; }
+    button.unblock  { background: #10b981; color: white; }
+    button.approve  { background: #0ea5e9; color: white; }
+    button.reject   { background: #f59e0b; color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Admin Dashboard</h1>
+    <p>Manage Users & Withdrawals</p>
+  </header>
+  <nav>
+    <button onclick="logout()">Logout</button>
+  </nav>
+
+  <div class="container">
+    <h2>All Users</h2>
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>First Name</th>
+          <th>Last Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Balance</th>
+          <th>Role</th>
+          <th>Blocked</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Filled dynamically -->
+      </tbody>
+    </table>
+
+    <h2>Pending Withdrawals</h2>
+    <table id="withdrawTable">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Email</th>
+          <th>Amount</th>
+          <th>Requested At</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Filled dynamically -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    window.onload = () => {
+      loadUsers();
+      loadWithdrawals();
+    };
+
+    // ── Load users for block/unblock ──
+    async function loadUsers() {
+      try {
+        const res = await fetch('/api/admin/users', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error();
+        const users = await res.json();
+        const tbody = document.getElementById('usersTable').querySelector('tbody');
+        tbody.innerHTML = '';
+
+        users.forEach(u => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${u.firstName}</td>
+            <td>${u.lastName}</td>
+            <td>${u.email}</td>
+            <td>${u.phone}</td>
+            <td>₦${u.balance}</td>
+            <td>${u.role}</td>
+            <td>${u.isBlocked}</td>
+            <td>
+              ${u.isBlocked
+                ? `<button class="unblock" onclick="toggleBlock('${u._id}', false)">Unblock</button>`
+                : `<button class="block" onclick="toggleBlock('${u._id}', true)">Block</button>`
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+      }
+    }
+
+    async function toggleBlock(userId, shouldBlock) {
+      const endpoint = shouldBlock ? '/api/admin/block' : '/api/admin/unblock';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ userId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.msg || 'Action failed');
+          return;
+        }
+        alert(data.msg);
+        loadUsers();
+      } catch {
+        alert('Error. Try again.');
+      }
+    }
+
+    // ── Load withdrawal requests ──
+    async function loadWithdrawals() {
+      try {
+        const res = await fetch('/api/admin/withdrawals', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error();
+        const requests = await res.json();
+        const tbody = document.getElementById('withdrawTable').querySelector('tbody');
+        tbody.innerHTML = '';
+
+        requests.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${r.userId.firstName} ${r.userId.lastName}</td>
+            <td>${r.userId.email}</td>
+            <td>₦${r.amount}</td>
+            <td>${new Date(r.createdAt).toLocaleString()}</td>
+            <td>${r.status}</td>
+            <td>
+              ${r.status === 'pending'
+                ? `<button class="approve" onclick="approveWithdrawal('${r._id}')">Approve</button>
+                   <button class="reject"  onclick="rejectWithdrawal('${r._id}')">Reject</button>`
+                : ''
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+      }
+    }
+
+    async function approveWithdrawal(requestId) {
+      try {
+        const res = await fetch('/api/admin/withdrawals/approve', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ requestId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.msg || 'Approval failed');
+          return;
+        }
+        alert(data.msg);
+        loadWithdrawals();
+      } catch {
+        alert('Error. Try again.');
+      }
+    }
+
+    async function rejectWithdrawal(requestId) {
+      try {
+        const res = await fetch('/api/admin/withdrawals/reject', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ requestId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.msg || 'Rejection failed');
+          return;
+        }
+        alert(data.msg);
+        loadWithdrawals();
+      } catch {
+        alert('Error. Try again.');
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+  </html>
